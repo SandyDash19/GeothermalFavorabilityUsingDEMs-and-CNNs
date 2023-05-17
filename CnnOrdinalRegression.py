@@ -128,7 +128,8 @@ class MyDataset(Dataset):
         return len(self.data)
 
 # download and preprocess data, create dataloaders
-batch_size = 1
+batch_size_train = 20
+batch_size_val = 1
 
 # Create instances for training and validation datasets
 train_dataset = MyDataset(train_in, train_y, transform=transform_train)
@@ -137,10 +138,10 @@ val_dataset = MyDataset(val_in, val_y, transform=transform_test)
 print (train_dataset.data.shape)
 # Create DataLoader for batching, shuffling
 train_loader = torch.utils.data.DataLoader(dataset = train_dataset,
-                                           batch_size = batch_size,
+                                           batch_size = batch_size_train,
                                            shuffle = True)
 
-val_loader = torch.utils.data.DataLoader (dataset = val_dataset, batch_size=batch_size, shuffle=False)
+val_loader = torch.utils.data.DataLoader (dataset = val_dataset, batch_size=batch_size_val, shuffle=False)
 
 print (train_dataset.data.shape, val_dataset.data.shape)
 #--------------------------------------------------------------------------------
@@ -184,13 +185,13 @@ def test_loop(dataloader, model, loss_fn):
             X = X.to(device)
             y = y.to(device)
             pred = model(X)
-            print (f' pred = {pred} , target = {y}')
+            #print (f' pred = {pred} , target = {y}')
             test_loss += loss_fn(pred, y).item()
             correct += (pred.argmax(1) == y).type(torch.float).sum().item()            
 
     test_loss /= num_batches
     correct /= size
-    print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
+    #print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
     return test_loss, 100*correct
 #-----------------------------------------------------------------------------
 
@@ -210,10 +211,10 @@ X = next(iter(train_loader))[0].to(device)    # get a batch from dataloader
 model.forward(X)                       # apply forward pass
 model.apply(init_weights)              # apply initialization
 
-loss_fn = nn.MSELoss()
+loss_fn = nn.SmoothL1Loss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
-epochs = 3
+epochs = 30
 
 plt.figure(figsize=(8,6))
 train_losses = []
