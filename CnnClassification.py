@@ -73,7 +73,7 @@ def train_loop(dataloader, model, loss_fn, optimizer):
         
         if batch % 10 == 0:
             loss, current = loss.item(), (batch + 1) * len(X)
-            #print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+            print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
     return(loss_fn(pred, y).item())
     
 
@@ -86,9 +86,10 @@ def test_loop(dataloader, model, loss_fn):
         for X, y in dataloader:
             X = X.to(device)
             y = y.to(device)
+            #print (f'val_X {X}, val_y {y}')
             pred = model(X)
             test_loss += loss_fn(pred, y).item()
-            #print (f'pred {pred}, label {y}')
+            print (f'pred {pred}, label {y}')
             correct += (pred.argmax(1) == y).type(torch.float).sum().item()
 
     test_loss /= num_batches
@@ -158,6 +159,7 @@ def main () :
     train_in, val_in, train_y, val_y = train_test_split(X_train, binned_y, test_size=0.20)
 
     print (f' train {train_in.shape}, train_label {train_y.shape}, val {val_in.shape}, val label {val_y.shape}')
+    #print (f' val_labels {val_y}')
     #------------------------------------------------------------
 
     #----------Define Image augmentation to increase number of images----------------
@@ -172,7 +174,7 @@ def main () :
 
     transform_test = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.4914], std=[0.2023])
+        #transforms.Normalize(mean=[0.4914], std=[0.2023])
     ])
 
     #-----------Preprocess the data-----------------------------------------------
@@ -185,7 +187,8 @@ def main () :
     train_dataset = MyDataset(train_in, train_y, transform=transform_train)
     val_dataset = MyDataset(val_in, val_y, transform=transform_test)
 
-    print (train_dataset.data.shape)
+    print (f' val_dataset {val_dataset.targets}')
+    #print (train_dataset.data.shape)
     # Create DataLoader for batching, shuffling
     train_loader = torch.utils.data.DataLoader(dataset = train_dataset,
                                                batch_size = batch_size_train,
@@ -194,8 +197,11 @@ def main () :
     val_loader = torch.utils.data.DataLoader (dataset = val_dataset, batch_size=batch_size_val, shuffle=False)
 
     print (train_dataset.data.shape, val_dataset.data.shape)
+   
+    # debug prints
 
-
+    f#or data, targets in val_loader:
+        #print(f'data_loader targets {targets}')
     #------------- Setup the Model------------------------------------------------
     
     # Number of outputs are 4 here becasuse there are 4 ordinal labels
