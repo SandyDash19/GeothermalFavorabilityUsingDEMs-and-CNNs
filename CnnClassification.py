@@ -73,7 +73,7 @@ def train_loop(dataloader, model, loss_fn, optimizer):
         
         if batch % 10 == 0:
             loss, current = loss.item(), (batch + 1) * len(X)
-            print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+            #print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
     return(loss_fn(pred, y).item())
     
 
@@ -89,7 +89,7 @@ def test_loop(dataloader, model, loss_fn):
             #print (f'val_X {X}, val_y {y}')
             pred = model(X)
             test_loss += loss_fn(pred, y).item()
-            print (f'pred {pred}, label {y}')
+            #print (f'test_loss {test_loss}, pred {pred}, label {y}')
             correct += (pred.argmax(1) == y).type(torch.float).sum().item()
 
     test_loss /= num_batches
@@ -169,12 +169,12 @@ def main () :
         transforms.RandomHorizontalFlip(),
         transforms.RandomRotation((-10,10)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.4914], std=[0.2023])
+        transforms.Normalize(mean=[0.5], std=[0.5])
     ])
 
     transform_test = transforms.Compose([
         transforms.ToTensor(),
-        #transforms.Normalize(mean=[0.4914], std=[0.2023])
+        transforms.Normalize(mean=[0.5], std=[0.5])
     ])
 
     #-----------Preprocess the data-----------------------------------------------
@@ -200,7 +200,7 @@ def main () :
    
     # debug prints
 
-    f#or data, targets in val_loader:
+    #for data, targets in val_loader:
         #print(f'data_loader targets {targets}')
     #------------- Setup the Model------------------------------------------------
     
@@ -215,7 +215,7 @@ def main () :
     model.apply(init_weights)              # apply initialization
 
     loss_fn = nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
     epochs = 30
 
