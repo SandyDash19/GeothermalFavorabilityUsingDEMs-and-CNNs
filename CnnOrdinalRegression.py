@@ -85,7 +85,7 @@ norm_y = norm_y.astype(np.float16)
 #-------------------------------------------------------------
 
 #----------Split Training Data-------------------------------
-train_in, val_in, train_y, val_y = train_test_split(X_train, norm_y, test_size=0.20)
+train_in, val_in, train_y, val_y = train_test_split(X_train, binned_y, test_size=0.20)
 
 print (train_in.shape, train_y.shape, val_in.shape, val_y.shape)
 #------------------------------------------------------------
@@ -128,7 +128,7 @@ class MyDataset(Dataset):
         return len(self.data)
 
 # download and preprocess data, create dataloaders
-batch_size_train = 20
+batch_size_train = 8
 batch_size_val = 1
 
 # Create instances for training and validation datasets
@@ -185,7 +185,7 @@ def test_loop(dataloader, model, loss_fn):
             X = X.to(device)
             y = y.to(device)
             pred = model(X)
-            #print (f' pred = {pred} , target = {y}')
+            print (f' pred = {pred} , target = {y}')
             test_loss += loss_fn(pred, y).item()
             correct += (pred.argmax(1) == y).type(torch.float).sum().item()            
 
@@ -202,7 +202,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print (device)
 
 # Number of outputs are 4 here becasuse 
-num_outputs = 1
+num_outputs = 4
 model = AlexNetBN(num_outputs).to(device)
 
 model.float()

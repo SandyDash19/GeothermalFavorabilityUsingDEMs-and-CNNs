@@ -46,10 +46,14 @@ class AlexNetBN(nn.Module):
         )
 
     def forward(self, x):
-        x = self.net(x)        
+        x = self.net(x)  
+        print(f"After net: {x.shape}")      
         x = self.avgpool(x)
+        print(f"After avgpool: {x.shape}")
         x = torch.flatten(x, 1)
+        print(f"After flatten: {x.shape}")
         x = self.classifier(x)
+        print(f"After classifier: {x.shape}")
         return x
 
     
