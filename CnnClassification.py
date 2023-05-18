@@ -165,9 +165,9 @@ def main () :
     #----------Define Image augmentation to increase number of images----------------
     # Define data transformations
     transform_train = transforms.Compose([
-        #transforms.RandomCrop(32, padding=4),
+        transforms.RandomCrop(30, padding=4),
         transforms.RandomHorizontalFlip(),
-        transforms.RandomRotation((-10,10)),
+        transforms.RandomRotation((-10,80)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.5], std=[0.5])
     ])
@@ -180,7 +180,7 @@ def main () :
     #-----------Preprocess the data-----------------------------------------------
 
     # Set batch_size for training and val
-    batch_size_train = 20
+    batch_size_train = 8
     batch_size_val = 1
 
     # Create instances for training and validation datasets
@@ -217,7 +217,7 @@ def main () :
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
-    epochs = 30
+    epochs = 10
 
     plt.figure(figsize=(8,6))
     train_losses = []
