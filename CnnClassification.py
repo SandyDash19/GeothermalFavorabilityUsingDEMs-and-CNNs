@@ -144,11 +144,11 @@ def main () :
     file.close()
 
     print (X_train.shape, y_train.shape, X_test.shape)
-    print (f'y_train_max {y_train.max()}, y_train_min {y_train.min()}')
+    #print (f'y_train_max {y_train.max()}, y_train_min {y_train.min()}')
 
     # resize binned_y to make it a 2D matrix
     y_train = y_train.reshape(-1,1)
-    print (y_train.shape)
+    #print (y_train.shape)
 
     # Assign Ordinal labels 
     binned_y = rankbin (y_train)
@@ -165,7 +165,7 @@ def main () :
     #----------Define Image augmentation to increase number of images----------------
     # Define data transformations
     transform_train = transforms.Compose([
-        transforms.RandomCrop(30, padding=4),
+        transforms.RandomCrop(30, padding=4, pad_if_needed=True),
         transforms.RandomHorizontalFlip(),
         transforms.RandomRotation((-10,80)),
         transforms.ToTensor(),
@@ -187,7 +187,7 @@ def main () :
     train_dataset = MyDataset(train_in, train_y, transform=transform_train)
     val_dataset = MyDataset(val_in, val_y, transform=transform_test)
 
-    print (f' val_dataset {val_dataset.targets}')
+    #print (f' val_dataset {val_dataset.targets}')
     #print (train_dataset.data.shape)
     # Create DataLoader for batching, shuffling
     train_loader = torch.utils.data.DataLoader(dataset = train_dataset,
