@@ -88,7 +88,7 @@ def test_loop(dataloader, model, loss_fn):
             y = y.to(device)
             pred = model(X)
             test_loss += loss_fn(pred, y).item()
-            print (f'pred {pred}, label {y}')
+            #print (f'pred {pred}, label {y}')
             correct += (pred.argmax(1) == y).type(torch.float).sum().item()
 
     test_loss /= num_batches
@@ -200,9 +200,9 @@ def main () :
     
     # Number of outputs are 4 here becasuse there are 4 ordinal labels
     num_outputs = 4
-    model = AlexNetBN(num_outputs).to(device)
+    model = AlexNetBN(num_classes=num_outputs).to(device)
 
-    model.float()
+    #model.float()
     # initialize weights, requires forward pass for Lazy layers
     X = next(iter(train_loader))[0].to(device)    # get a batch from dataloader
     model.forward(X)                       # apply forward pass
