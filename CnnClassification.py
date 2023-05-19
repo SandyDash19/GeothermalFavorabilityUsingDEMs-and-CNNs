@@ -243,10 +243,11 @@ def analyzeImages (epochs, batch_size_train, batch_size_val, lr) :
     test_losses = []
     test_accs = []
     
-    # the following lists will be overwritten for each epoch but i only care about the last one
-    pred = []
-    labels = []
+    # the following lists will be overwritten for each epoch but i only care about the last one    
     for t in range(epochs):
+        pred = []
+        labels = []
+
         train_loss = train_loop(train_loader, model, loss_fn, optimizer)
         val_loss, val_acc, pred, labels = test_loop(val_loader, model, loss_fn)
 
@@ -267,16 +268,16 @@ def analyzeImages (epochs, batch_size_train, batch_size_val, lr) :
         labels_cpu = np.concatenate([l.cpu().numpy().flatten() for l in labels]) + 1
         #print (f'pred {pred_cpu.shape}, labels_cpu {labels_cpu.shape}')
         
-        df = pd.DataFrame({
+    df = pd.DataFrame({
             'pred': pred_cpu, 
             'labels': labels_cpu
-        })
-        # Save the DataFrame as a CSV file
-        df.to_csv('../results/predictions_labels.csv', index=False)
+    })
+    # Save the DataFrame as a CSV file
+    df.to_csv('../results/predictions_labels.csv', index=False)
 
-        # Calculate mean ordinal loss
-        L1_loss = np.mean(np.abs (labels_cpu - pred_cpu))
-        mean_L1_loss = np.round(L1_loss,2)
+    # Calculate mean ordinal loss
+    L1_loss = np.mean(np.abs (labels_cpu - pred_cpu))
+    mean_L1_loss = np.round(L1_loss,2)
 
     print(f"Final Accuracy: {(val_acc):>0.1f}% , Mean Ordinal Loss {mean_L1_loss}")
     plt.show()
@@ -310,13 +311,13 @@ def main ():
             print(f'    {key}: {value}')
     
     else :
-        Iter = 10
+        Iter = 1
         acc = []
         l1_loss = []
 
-        epoch = 20
+        epoch = 10
         batch_size_train = 20
-        batch_size_val = 8
+        batch_size_val = 44
         lr = 0.1
 
         for i in range (Iter):

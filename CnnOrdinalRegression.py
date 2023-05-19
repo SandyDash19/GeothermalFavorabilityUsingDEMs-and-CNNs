@@ -18,15 +18,42 @@ from torchcam.methods import GradCAM
 import cv2
 from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image,preprocess_image
-import os
+import pandas as pd 
+import optuna 
 import timeit
 
+"""
+Considering regression approach here
+Input to the CNN - Images
+Labels - heat residual with a cap 
+  if heat resid < 0 :
+     heat_resid = 0
+  elif heat resid > 300 :
+     heat_resid = 300
+
+CNN num_output classes = 1
+Optimizer = Adams
+Loss = Smooth L1 Loss
+
+Bin the targets and bin the predictions
+Calculate mean L1 loss
+Binary classification error 
+
+"""
 startTime = timeit.default_timer()
 
 # Device will determine whether to run the training on GPU or CPU.
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print (device)
 
+class AddGaussianNoise(object):
+    def __init__(self, mean=0., std=1.):
+        self.std = std
+        self.mean = mean
+        
+    def __call__(self, tensor):
+        noise = torch.randn_like(tensor) * self.std + self.mean
+        return tensor + noise
 
 # Apply Transform to dataset in this class.
 class MyDataset(Dataset):
@@ -80,22 +107,25 @@ def train_loop(dataloader, model, loss_fn, optimizer):
 def test_loop(dataloader, model, loss_fn):
     size = len(dataloader.dataset)
     num_batches = len(dataloader)
+    #print (f'length of val loader {num_batches}')
     test_loss, correct = 0, 0
+    prediction = []
+    target = []
     
     with torch.no_grad():
         for X, y in dataloader:
             X = X.to(device)
-            y = y.to(device)
-            #print (f'val_X {X}, val_y {y}')
-            pred = model(X)
+            y = y.to(device)            
+            pred = model(X)            
             test_loss += loss_fn(pred, y).item()
-            #print (f'test_loss {test_loss}, pred {pred}, label {y}')
-            correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+            #print (f'test_loss {test_loss}, pred {pred}, label {y}')            
+            prediction.append(pred.item())
+            target.append(y.item())
 
     test_loss /= num_batches
-    correct /= size
+
 #     print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
-    return test_loss, 100*correct
+    return test_loss, prediction, target
 
 """This function gets the input of predicted outputs from validation set,
 and actual labels for val set. These inputs are already quantile transformed.
@@ -116,21 +146,21 @@ def rankbin (Y):
     for i in range (len(Y)):
         # Low 
         if Y[i] <= bin_edges[0]:
-            ranked.append(0)
+            ranked.append(1)
         #transition
         elif Y[i] > bin_edges[0] and Y[i] <= bin_edges[1]:
-            ranked.append(1)
+            ranked.append(2)
         #high
         elif Y[i] > bin_edges[1] and Y[i] <= bin_edges[2]:
-            ranked.append(2)
+            ranked.append(3)
         #Very High
         elif Y[i] > bin_edges[2]:
-            ranked.append(3)
+            ranked.append(4)
     
     return np.asarray(ranked)
 
 
-def main () :
+def analyzeImages (epochs, batch_size_train, batch_size_val, lr) :
     #---------- Get Data---------------------------------------
     # Open training data
     file = h5py.File("../mp02files/DEM_train.h5", "r+")
@@ -144,19 +174,28 @@ def main () :
     file.close()
 
     print (X_train.shape, y_train.shape, X_test.shape)
-    print (f'y_train_max {y_train.max()}, y_train_min {y_train.min()}')
+    #print (f'y_train_max {y_train.max()}, y_train_min {y_train.min()}')
+
+    # Delete images which has very little information
+    indices_to_delete = [6,76,91,104,108,156]
+
+    X_train = np.delete(X_train, indices_to_delete, axis=0)
+    y_train = np.delete(y_train, indices_to_delete, axis=0)
+
+    # Cap the targets 
+    y_train[y_train < 0] = 0
+    y_train[y_train > 300] = 300    
 
     # resize binned_y to make it a 2D matrix
     y_train = y_train.reshape(-1,1)
-    print (y_train.shape)
 
-    # Assign Ordinal labels 
-    binned_y = rankbin (y_train)
+    print (y_train , y_train.shape)
+    
 
     #-------------------------------------------------------------
 
     #----------Split Training Data-------------------------------
-    train_in, val_in, train_y, val_y = train_test_split(X_train, binned_y, test_size=0.20)
+    train_in, val_in, train_y, val_y = train_test_split(X_train, y_train, test_size=0.20)
 
     print (f' train {train_in.shape}, train_label {train_y.shape}, val {val_in.shape}, val label {val_y.shape}')
     #print (f' val_labels {val_y}')
@@ -165,11 +204,15 @@ def main () :
     #----------Define Image augmentation to increase number of images----------------
     # Define data transformations
     transform_train = transforms.Compose([
-        #transforms.RandomCrop(32, padding=4),
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomRotation((-10,10)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5], std=[0.5])
+    #transforms.RandomCrop(30, padding = None),
+    transforms.RandomHorizontalFlip(p=0.5),
+    transforms.RandomVerticalFlip(p=0.5),
+    transforms.RandomRotation((0, 359)),       
+    #transforms.RandomPerspective(distortion_scale=0.5, p=0.5),    
+    #transforms.GaussianBlur(3, sigma=(0.1, 2.0)),    
+    transforms.ToTensor(),
+    #AddGaussianNoise(0.0, 0.1),
+    transforms.Normalize(mean=[0.5], std=[0.5])
     ])
 
     transform_test = transforms.Compose([
@@ -179,22 +222,18 @@ def main () :
 
     #-----------Preprocess the data-----------------------------------------------
 
-    # Set batch_size for training and val
-    batch_size_train = 20
-    batch_size_val = 1
-
     # Create instances for training and validation datasets
     train_dataset = MyDataset(train_in, train_y, transform=transform_train)
     val_dataset = MyDataset(val_in, val_y, transform=transform_test)
 
-    print (f' val_dataset {val_dataset.targets}')
+    #print (f' val_dataset {val_dataset.targets}')
     #print (train_dataset.data.shape)
     # Create DataLoader for batching, shuffling
     train_loader = torch.utils.data.DataLoader(dataset = train_dataset,
                                                batch_size = batch_size_train,
                                                shuffle = True)
 
-    val_loader = torch.utils.data.DataLoader (dataset = val_dataset, batch_size=batch_size_val, shuffle=False)
+    val_loader = torch.utils.data.DataLoader (dataset = val_dataset, batch_size=batch_size_val, shuffle=True)
 
     print (train_dataset.data.shape, val_dataset.data.shape)
    
@@ -205,7 +244,7 @@ def main () :
     #------------- Setup the Model------------------------------------------------
     
     # Number of outputs are 4 here becasuse there are 4 ordinal labels
-    num_outputs = 4
+    num_outputs = 1
     model = AlexNetBN(num_classes=num_outputs).to(device)
 
     #model.float()
@@ -214,34 +253,112 @@ def main () :
     model.forward(X)                       # apply forward pass
     model.apply(init_weights)              # apply initialization
 
-    loss_fn = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-
-    epochs = 30
+    loss_fn = nn.SmoothL1Loss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     plt.figure(figsize=(8,6))
     train_losses = []
     test_losses = []
     test_accs = []
+    
+    # the following lists will be overwritten for each epoch but i only care about the last one
+    pred = []
+    labels = []
     for t in range(epochs):
         train_loss = train_loop(train_loader, model, loss_fn, optimizer)
-        val_loss, val_acc = test_loop(val_loader, model, loss_fn)
+        val_loss, pred, labels = test_loop(val_loader, model, loss_fn)
 
         # plot
         train_losses.append(train_loss)
         test_losses.append(val_loss)
-        test_accs.append(val_acc/100)
+       
         plt.clf()
         plt.plot(np.arange(1, t+2), train_losses, '-', label='train loss')
         plt.plot(np.arange(1, t+2), test_losses, '--', label='test loss')
-        plt.plot(np.arange(1, t+2), test_accs, '-.', label='test acc')
+        
         plt.legend()    
         display.clear_output(wait=True)
         display.display(plt.gcf())
         time.sleep(0.0001)
+        
+        pred_cpu = np.concatenate([p.cpu().numpy().flatten() for p in pred])
+        labels_cpu = np.concatenate([l.cpu().numpy().flatten() for l in labels])
+        
+        #bin labels and prediction
+        binned_pred = rankbin (pred_cpu)
+        binned_labels = rankbin (labels_cpu)
 
-    print(f"Final Accuracy: {(val_acc):>0.1f}%")
+    df = pd.DataFrame({
+            'pred': pred_cpu, 
+            'labels': labels_cpu
+        })
+    # Save the DataFrame as a CSV file
+    df.to_csv('../results/predictions_labels_regression.csv', index=False)
+
+    # Calculate mean ordinal loss
+    L1_loss = np.mean(np.abs (binned_labels - binned_pred))
+    mean_L1_loss = np.round(L1_loss,2)
+
+    for i in range (binned_pred.shape[0]):
+            corret += (binned_pred[i] == binned_labels[i])
+
+    print(f"Final Accuracy: {(val_acc):>0.1f}% , Mean Ordinal Loss {mean_L1_loss}")
     plt.show()
+
+    return val_acc, mean_L1_loss
+
+
+def objective(trial):
+    lr = trial.suggest_loguniform('lr', 1e-3, 1e-1)
+    batch_size_train = trial.suggest_categorical('batch_size_train', [8,16,24,32,40,48,56,64,72,80])
+    batch_size_val = trial.suggest_categorical('batch_size_val', [1,3,9,12,15,18,21,24,27,30])
+    epochs = trial.suggest_int('epochs', 10, 100)
+
+    val_acc, mean_l1_loss = analyzeImages(epochs, batch_size_train, batch_size_val, lr)
+    return mean_l1_loss
+
+def main ():
+
+    optuna_enabled = 0 
+    
+    if optuna_enabled:
+
+        study = optuna.create_study(direction='minimize')
+        study.optimize(objective, n_trials=30)
+
+        print('Best trial:')
+        trial = study.best_trial
+        print(f'  Value: {trial.value}')
+        print('  Params: ')
+        for key, value in trial.params.items():
+            print(f'    {key}: {value}')
+    
+    else :
+        Iter = 10
+        acc = []
+        l1_loss = []
+
+        epoch = 20
+        batch_size_train = 20
+        batch_size_val = 8
+        lr = 0.1
+
+        for i in range (Iter):
+            val_acc = 0.0
+            mean_l1_loss = 0.0
+            val_acc, mean_l1_loss = analyzeImages(epoch, batch_size_train, batch_size_val, lr)
+
+            acc.append (val_acc)
+            l1_loss.append (mean_l1_loss)
+
+        acc_np = np.asarray (acc)
+        l1_loss_np = np.asarray (l1_loss)
+
+        avg_acc = np.mean (acc_np)
+        avg_loss = np.mean (l1_loss_np)
+
+        print (f'Average Ordinal accuracy {np.round(avg_acc,2)} , average L1_loss {np.round(avg_loss,2)}')
+
 
 if __name__ == '__main__':
    main()
