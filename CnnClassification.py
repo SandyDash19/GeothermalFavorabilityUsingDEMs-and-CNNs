@@ -27,6 +27,14 @@ startTime = timeit.default_timer()
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print (device)
 
+class AddGaussianNoise(object):
+    def __init__(self, mean=0., std=1.):
+        self.std = std
+        self.mean = mean
+        
+    def __call__(self, tensor):
+        noise = torch.randn_like(tensor) * self.std + self.mean
+        return tensor + noise
 
 # Apply Transform to dataset in this class.
 class MyDataset(Dataset):
@@ -179,11 +187,12 @@ def analyzeImages () :
     transform_train = transforms.Compose([
     #transforms.RandomCrop(30, padding = None),
     transforms.RandomHorizontalFlip(p=0.5),
-    torchvision.transforms.RandomVerticalFlip(p=0.5),
-    transforms.RandomRotation((0, 359)),    
-    transforms.RandomPerspective(distortion_scale=0.5, p=0.5),    
-    transforms.GaussianBlur(3, sigma=(0.1, 2.0)),
+    transforms.RandomVerticalFlip(p=0.5),
+    transforms.RandomRotation((0, 359)),       
+    #transforms.RandomPerspective(distortion_scale=0.5, p=0.5),    
+    #transforms.GaussianBlur(3, sigma=(0.1, 2.0)),    
     transforms.ToTensor(),
+    #AddGaussianNoise(0.0, 0.1),
     transforms.Normalize(mean=[0.5], std=[0.5])
     ])
 
