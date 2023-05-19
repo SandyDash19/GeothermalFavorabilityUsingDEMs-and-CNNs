@@ -130,7 +130,7 @@ def rankbin (Y):
     return np.asarray(ranked)
 
 
-def main () :
+def analyzeImages () :
     #---------- Get Data---------------------------------------
     # Open training data
     file = h5py.File("../mp02files/DEM_train.h5", "r+")
@@ -145,6 +145,14 @@ def main () :
 
     print (X_train.shape, y_train.shape, X_test.shape)
     #print (f'y_train_max {y_train.max()}, y_train_min {y_train.min()}')
+
+    # Delete images which has very little information
+    indices_to_delete = [6,76,91,104,108,156]
+
+    X_train = np.delete(X_train, indices_to_delete, axis=0)
+    y_train = np.delete(y_train, indices_to_delete, axis=0)
+
+    print (X_train.shape, y_train.shape, X_test.shape)
 
     # resize binned_y to make it a 2D matrix
     y_train = y_train.reshape(-1,1)
@@ -241,7 +249,17 @@ def main () :
         time.sleep(0.0001)
 
     print(f"Final Accuracy: {(val_acc):>0.1f}%")
-    plt.show()
+    #plt.show()
+
+    return val_acc
+
+def main ():
+
+    val_acc = 0.0
+    for i in range (10):
+        val_acc += analyzeImages()
+
+    print (f'Average Ordinal accuracy {val_acc / 10}')
 
 if __name__ == '__main__':
    main()

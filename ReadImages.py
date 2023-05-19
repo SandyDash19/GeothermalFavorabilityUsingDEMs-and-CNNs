@@ -1,6 +1,7 @@
 import h5py
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
 # Open training data
 file = h5py.File("../mp02files/DEM_train.h5", "r+")
@@ -23,12 +24,24 @@ im = X_train[idx, :, :]
 plt.imshow(im)
 plt.show()
 
+"""
+# Delete images which has very little information
+indices_to_delete = [6,76,91,104,108,156]
+
+X_train = np.delete(X_train, indices_to_delete, axis=0)
+y_train = np.delete(y_train, indices_to_delete, axis=0)
+
+print (X_train.shape, y_train.shape, X_test.shape)
+"""
+
 # To display images in two separate grids, split the images 
 # into two groups
 group1 = X_train[:111]
 y_train1 = y_train[:111]
 group2 = X_train[111:]
 y_train2 = y_train[111:]
+
+indices_to_delete = [6,76,91,104,108,156]
 
 print (group1.shape)
 #Plot half of the images
@@ -48,6 +61,11 @@ for i in range(len(group1)):
     ax = plt.subplot(grid_size1, grid_size1, i + 1)
     # Remove axes for clarity
     ax.axis('off')    
+
+    # Add a red rectangle 
+    if i in indices_to_delete:
+        rect = patches.Rectangle((0, 0), 1, 1, linewidth=2, edgecolor='r', facecolor='none', transform=ax.transAxes)
+        ax.add_patch(rect)
     # Show the image
     ax.imshow(group1[i, :, :])
     # Add label on top of the image
@@ -68,6 +86,12 @@ for i in range(len(group2)):
     ax = plt.subplot(grid_size2, grid_size2, i + 1)
     # Remove axes for clarity
     ax.axis('off')    
+
+    # Add a red rectangle 
+    if i+112 in indices_to_delete:
+        rect = patches.Rectangle((0, 0), 1, 1, linewidth=2, edgecolor='r', facecolor='none', transform=ax.transAxes)
+        ax.add_patch(rect)
+
     # Show the image
     ax.imshow(group2[i, :, :])
     # Add label on top of the image
