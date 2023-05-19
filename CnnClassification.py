@@ -80,6 +80,7 @@ def train_loop(dataloader, model, loss_fn, optimizer):
 def test_loop(dataloader, model, loss_fn):
     size = len(dataloader.dataset)
     num_batches = len(dataloader)
+    #print (f'length of val loader {num_batches}')
     test_loss, correct = 0, 0
     prediction = []
     target = []
@@ -176,11 +177,14 @@ def analyzeImages () :
     #----------Define Image augmentation to increase number of images----------------
     # Define data transformations
     transform_train = transforms.Compose([
-        #transforms.RandomCrop(30, padding=4, pad_if_needed=True),
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomRotation((-10,80)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5], std=[0.5])
+    #transforms.RandomCrop(30, padding = None),
+    transforms.RandomHorizontalFlip(p=0.5),
+    torchvision.transforms.RandomVerticalFlip(p=0.5),
+    transforms.RandomRotation((0, 359)),    
+    transforms.RandomPerspective(distortion_scale=0.5, p=0.5),    
+    transforms.GaussianBlur(3, sigma=(0.1, 2.0)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.5], std=[0.5])
     ])
 
     transform_test = transforms.Compose([
@@ -191,8 +195,8 @@ def analyzeImages () :
     #-----------Preprocess the data-----------------------------------------------
 
     # Set batch_size for training and val
-    batch_size_train = 8
-    batch_size_val = 1
+    batch_size_train = 20
+    batch_size_val = 20
 
     # Create instances for training and validation datasets
     train_dataset = MyDataset(train_in, train_y, transform=transform_train)
@@ -267,22 +271,35 @@ def analyzeImages () :
         df.to_csv('../results/predictions_labels.csv', index=False)
 
         # Calculate mean ordinal loss
-        ordinal_loss = np.mean(np.abs (labels_cpu - pred_cpu))
+        L1_loss = np.mean(np.abs (labels_cpu - pred_cpu))
+        mean_L1_loss = np.round(L1_loss,2)
 
+    print(f"Final Accuracy: {(val_acc):>0.1f}% , Mean Ordinal Loss {mean_L1_loss}")
+    #plt.show()
 
-    print(f"Final Accuracy: {(val_acc):>0.1f}% , Mean Ordinal Loss {ordinal_loss}")
-    plt.show()
-
-    return val_acc
+    return val_acc, mean_L1_loss
 
 def main ():
 
-    Iter = 10
-    val_acc = 0.0
-    for i in range (Iter):
-        val_acc += analyzeImages()
+    Iter = 10  
+    acc = []
+    l1_loss = []
 
-    print (f'Average Ordinal accuracy {val_acc / Iter}')
+    for i in range (Iter):
+        val_acc = 0.0
+        mean_l1_loss = 0.0
+        val_acc, mean_l1_loss = analyzeImages()
+
+        acc.append (val_acc)
+        l1_loss.append (mean_l1_loss)
+    
+    acc_np = np.asarray (acc)
+    l1_loss_np = np.asarray (l1_loss)
+
+    avg_acc = np.mean (acc_np)
+    avg_loss = np.mean (l1_loss_np)
+
+    print (f'Average Ordinal accuracy {np.round(avg_acc,2)} , average L1_loss {np.round(avg_loss,2)}')
 
 if __name__ == '__main__':
    main()
