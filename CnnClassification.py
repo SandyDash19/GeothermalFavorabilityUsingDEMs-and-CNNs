@@ -19,6 +19,7 @@ import cv2
 from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image,preprocess_image
 import pandas as pd 
+import optuna 
 import timeit
 
 startTime = timeit.default_timer()
@@ -142,7 +143,7 @@ def rankbin (Y):
     return np.asarray(ranked)
 
 
-def analyzeImages () :
+def analyzeImages (epochs, batch_size_train, batch_size_val, lr) :
     #---------- Get Data---------------------------------------
     # Open training data
     file = h5py.File("../mp02files/DEM_train.h5", "r+")
@@ -203,10 +204,6 @@ def analyzeImages () :
 
     #-----------Preprocess the data-----------------------------------------------
 
-    # Set batch_size for training and val
-    batch_size_train = 20
-    batch_size_val = 20
-
     # Create instances for training and validation datasets
     train_dataset = MyDataset(train_in, train_y, transform=transform_train)
     val_dataset = MyDataset(val_in, val_y, transform=transform_test)
@@ -218,7 +215,7 @@ def analyzeImages () :
                                                batch_size = batch_size_train,
                                                shuffle = True)
 
-    val_loader = torch.utils.data.DataLoader (dataset = val_dataset, batch_size=batch_size_val, shuffle=False)
+    val_loader = torch.utils.data.DataLoader (dataset = val_dataset, batch_size=batch_size_val, shuffle=True)
 
     print (train_dataset.data.shape, val_dataset.data.shape)
    
@@ -239,9 +236,7 @@ def analyzeImages () :
     model.apply(init_weights)              # apply initialization
 
     loss_fn = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-
-    epochs = 10
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     plt.figure(figsize=(8,6))
     train_losses = []
@@ -284,31 +279,62 @@ def analyzeImages () :
         mean_L1_loss = np.round(L1_loss,2)
 
     print(f"Final Accuracy: {(val_acc):>0.1f}% , Mean Ordinal Loss {mean_L1_loss}")
-    #plt.show()
+    plt.show()
 
     return val_acc, mean_L1_loss
 
+
+def objective(trial):
+    lr = trial.suggest_loguniform('lr', 1e-3, 1e-1)
+    batch_size_train = trial.suggest_categorical('batch_size_train', [8,16,24,32,40,48,56,64,72,80])
+    batch_size_val = trial.suggest_categorical('batch_size_val', [1,3,9,12,15,18,21,24,27,30])
+    epochs = trial.suggest_int('epochs', 10, 100)
+
+    val_acc, mean_l1_loss = analyzeImages(epochs, batch_size_train, batch_size_val, lr)
+    return mean_l1_loss
+
 def main ():
 
-    Iter = 10  
-    acc = []
-    l1_loss = []
-
-    for i in range (Iter):
-        val_acc = 0.0
-        mean_l1_loss = 0.0
-        val_acc, mean_l1_loss = analyzeImages()
-
-        acc.append (val_acc)
-        l1_loss.append (mean_l1_loss)
+    optuna_enabled = 0 
     
-    acc_np = np.asarray (acc)
-    l1_loss_np = np.asarray (l1_loss)
+    if optuna_enabled:
 
-    avg_acc = np.mean (acc_np)
-    avg_loss = np.mean (l1_loss_np)
+        study = optuna.create_study(direction='minimize')
+        study.optimize(objective, n_trials=30)
 
-    print (f'Average Ordinal accuracy {np.round(avg_acc,2)} , average L1_loss {np.round(avg_loss,2)}')
+        print('Best trial:')
+        trial = study.best_trial
+        print(f'  Value: {trial.value}')
+        print('  Params: ')
+        for key, value in trial.params.items():
+            print(f'    {key}: {value}')
+    
+    else :
+        Iter = 10
+        acc = []
+        l1_loss = []
+
+        epoch = 20
+        batch_size_train = 20
+        batch_size_val = 8
+        lr = 0.1
+
+        for i in range (Iter):
+            val_acc = 0.0
+            mean_l1_loss = 0.0
+            val_acc, mean_l1_loss = analyzeImages(epoch, batch_size_train, batch_size_val, lr)
+
+            acc.append (val_acc)
+            l1_loss.append (mean_l1_loss)
+
+        acc_np = np.asarray (acc)
+        l1_loss_np = np.asarray (l1_loss)
+
+        avg_acc = np.mean (acc_np)
+        avg_loss = np.mean (l1_loss_np)
+
+        print (f'Average Ordinal accuracy {np.round(avg_acc,2)} , average L1_loss {np.round(avg_loss,2)}')
+
 
 if __name__ == '__main__':
    main()
