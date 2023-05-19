@@ -18,7 +18,7 @@ from torchcam.methods import GradCAM
 import cv2
 from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image,preprocess_image
-import os
+import pandas as pd 
 import timeit
 
 startTime = timeit.default_timer()
@@ -81,21 +81,24 @@ def test_loop(dataloader, model, loss_fn):
     size = len(dataloader.dataset)
     num_batches = len(dataloader)
     test_loss, correct = 0, 0
+    prediction = []
+    target = []
     
     with torch.no_grad():
         for X, y in dataloader:
             X = X.to(device)
-            y = y.to(device)
-            #print (f'val_X {X}, val_y {y}')
-            pred = model(X)
+            y = y.to(device)            
+            pred = model(X)            
             test_loss += loss_fn(pred, y).item()
             #print (f'test_loss {test_loss}, pred {pred}, label {y}')
             correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+            prediction.append(pred.argmax(1))
+            target.append(y)
 
     test_loss /= num_batches
     correct /= size
 #     print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
-    return test_loss, 100*correct
+    return test_loss, 100*correct, prediction, target
 
 """This function gets the input of predicted outputs from validation set,
 and actual labels for val set. These inputs are already quantile transformed.
@@ -152,7 +155,7 @@ def analyzeImages () :
     X_train = np.delete(X_train, indices_to_delete, axis=0)
     y_train = np.delete(y_train, indices_to_delete, axis=0)
 
-    print (X_train.shape, y_train.shape, X_test.shape)
+    #print (X_train.shape, y_train.shape, X_test.shape)
 
     # resize binned_y to make it a 2D matrix
     y_train = y_train.reshape(-1,1)
@@ -173,7 +176,7 @@ def analyzeImages () :
     #----------Define Image augmentation to increase number of images----------------
     # Define data transformations
     transform_train = transforms.Compose([
-        transforms.RandomCrop(30, padding=4, pad_if_needed=True),
+        #transforms.RandomCrop(30, padding=4, pad_if_needed=True),
         transforms.RandomHorizontalFlip(),
         transforms.RandomRotation((-10,80)),
         transforms.ToTensor(),
@@ -231,9 +234,13 @@ def analyzeImages () :
     train_losses = []
     test_losses = []
     test_accs = []
+    
+    # the following lists will be overwritten for each epoch but i only care about the last one
+    pred = []
+    labels = []
     for t in range(epochs):
         train_loss = train_loop(train_loader, model, loss_fn, optimizer)
-        val_loss, val_acc = test_loop(val_loader, model, loss_fn)
+        val_loss, val_acc, pred, labels = test_loop(val_loader, model, loss_fn)
 
         # plot
         train_losses.append(train_loss)
@@ -247,19 +254,35 @@ def analyzeImages () :
         display.clear_output(wait=True)
         display.display(plt.gcf())
         time.sleep(0.0001)
+        
+        pred_cpu = np.concatenate([p.cpu().numpy().flatten() for p in pred]) + 1
+        labels_cpu = np.concatenate([l.cpu().numpy().flatten() for l in labels]) + 1
+        #print (f'pred {pred_cpu.shape}, labels_cpu {labels_cpu.shape}')
+        
+        df = pd.DataFrame({
+            'pred': pred_cpu, 
+            'labels': labels_cpu
+        })
+        # Save the DataFrame as a CSV file
+        df.to_csv('../results/predictions_labels.csv', index=False)
 
-    print(f"Final Accuracy: {(val_acc):>0.1f}%")
-    #plt.show()
+        # Calculate mean ordinal loss
+        ordinal_loss = np.mean(np.abs (labels_cpu - pred_cpu))
+
+
+    print(f"Final Accuracy: {(val_acc):>0.1f}% , Mean Ordinal Loss {ordinal_loss}")
+    plt.show()
 
     return val_acc
 
 def main ():
 
+    Iter = 10
     val_acc = 0.0
-    for i in range (10):
+    for i in range (Iter):
         val_acc += analyzeImages()
 
-    print (f'Average Ordinal accuracy {val_acc / 10}')
+    print (f'Average Ordinal accuracy {val_acc / Iter}')
 
 if __name__ == '__main__':
    main()
