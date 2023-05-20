@@ -40,9 +40,9 @@ def show_cam_on_image(img, mask):
     return img_alpha
 
 def relu_hook_function(module, grad_in, grad_out):
-    """
-    If there is a negative gradient, change it to zero
-    """
+ 
+    #If there is a negative gradient, change it to zero
+ 
     # Get the corresponding input
     corresponding_input = grad_out[0]
     
@@ -52,7 +52,8 @@ def relu_hook_function(module, grad_in, grad_out):
     # Zero out gradients where input and output is less than 0
     corresponding_input[corresponding_output < 0] = 0
     return (corresponding_input,)
-    
+
+
 def getData ():
     
     # Open training data
@@ -331,12 +332,10 @@ def cam_vis (val_loader, model):
     plt.tight_layout()
     plt.show()
 
-def guidedBackProp (val_loader, model):
 
+def guidedBackProp(val_loader, model):
     # Guided Back Propagation
-    heatResid_ordinal_classes = [
-        'low', 'transition', 'high', 'very high'
-    ]
+    heatResid_ordinal_classes = ['low', 'transition', 'high', 'very high']
 
     test_model = model.train().to(device)
 
@@ -346,76 +345,67 @@ def guidedBackProp (val_loader, model):
 
     for i, module in enumerate(test_model.modules()):
         if isinstance(module, torch.nn.ReLU):
-            #print(test_model.named_modules())
             module.register_full_backward_hook(relu_hook_function)
 
+    # Create a figure with 3x6 subplots
+    fig, axs = plt.subplots(3, 6, figsize=(18, 9))
+    fig.subplots_adjust(wspace=0.3, hspace=0.3)
 
     # Extract a batch of images and labels from the test_dataloader
     images, labels = next(iter(val_loader))
 
-    # Select the first image from the batch
-    input_image = images[0]
+    for i in range(3):
+        for j in range(3):
+            # Select the image from the batch
+            input_image = images[i*3 + j]
 
-    #print (input_image.shape)
+            if len(input_image.shape) == 3:
+                # Add a dummy batch dimension
+                input_tensor = torch.unsqueeze(input_image, 0)
+            else:
+                input_tensor = input_image
 
-    if len(input_image.shape) == 3:
-        # Add a dummy batch dimension
-        input_tensor = torch.unsqueeze(input_image, 0)
-    else:
-        input_tensor = input_image
+            # Make input_tensor a leaf tensor and move it to the device
+            input_tensor = input_tensor.clone().detach().to(device)
+            input_tensor.requires_grad_(True)
 
-    #print (input_tensor.shape)
+            # forward/inference
+            test_model.zero_grad()
+            output = test_model(input_tensor)
 
-    # Make input_tensor a leaf tensor and move it to the device
-    input_tensor = input_tensor.clone().detach().to(device)
-    input_tensor.requires_grad_(True)
+            # Backward pass
+            output.backward(torch.ones(output.shape).to(device))
 
-    #print(f"Is input_tensor a leaf tensor? {input_tensor.is_leaf}") 
+            # get the absolute value of the gradients and take the maximum along the color channels
+            gb = input_tensor.grad.abs().max(dim=1)[0].cpu().numpy()
 
-    # forward/inference
-    test_model.zero_grad()
-    output = test_model(input_tensor)
+            gb = gb - gb.min()
+            gb = gb / gb.max()  # normalize to 0-1
 
-    # Backward pass
-    output.backward(torch.ones(output.shape).to(device))
+            # remove color channel if it's 1
+            input_image = np.squeeze(input_image)  
 
-    #print(input_tensor.grad)  # Should not be None
+            # Get the image label
+            image_label = labels[i*3 + j].item()
+            image_class = heatResid_ordinal_classes[image_label]
 
-    # get the absolute value of the gradients and take the maximum along the color channels
-    gb = input_tensor.grad.abs().max(dim=1)[0].cpu().numpy()
+            # Get the predicted label
+            predicted_label = output.argmax().item()
+            predicted_class = heatResid_ordinal_classes[predicted_label]
 
-    gb = gb - gb.min()
-    gb = gb / gb.max()  # normalize to 0-1
+            # plot original image
+            axs[i, j*2].imshow(input_image)
+            axs[i, j*2].set_title(f'Orig Label: {image_class}')
+            axs[i, j*2].axis('off')
 
-    plt.figure(figsize=(6, 6))
-
-    # plot original image
-    plt.subplot(1, 2, 1)
-
-    # remove color channel if it's 1
-    input_image = np.squeeze(input_image)  
-
-    # Get the image label
-    image_label = labels[0].item()
-    image_class = heatResid_ordinal_classes[image_label]
-
-    # Get the predicted label
-    predicted_label = output.argmax().item()
-    predicted_class = heatResid_ordinal_classes[predicted_label]
-
-    plt.imshow(input_image)
-    plt.title(f'Orig Label: {image_class}')
-    plt.axis('off')
-
-    # plot guided backpropagation
-    plt.subplot(1, 2, 2)  
-    # remove the unnecessary channel dimension 
-    gb = np.squeeze(gb) 
-    plt.imshow(gb, cmap ='hot')
-    plt.title(f'GBP Pred Label: {predicted_class}')
-    plt.axis('off')
+            # plot guided backpropagation
+            gb = np.squeeze(gb) 
+            axs[i, j*2 + 1].imshow(gb, cmap ='gray')
+            axs[i, j*2 + 1].set_title(f'GBP Pred Label: {predicted_class}')
+            axs[i, j*2 + 1].axis('off')
 
     plt.show()  
+  
 
 
 def analyzeImages (train_in, val_in, train_y, val_y, epochs, batch_size_train, batch_size_val, lr) :
@@ -520,8 +510,8 @@ def analyzeImages (train_in, val_in, train_y, val_y, epochs, batch_size_train, b
     print(f"Final Accuracy: {(val_acc):>0.1f}% , Mean Ordinal Loss {mean_L1_loss}")
     #plt.show()
 
-    #feature_maps(val_in, model)
-    #cam_vis (val_loader, model)
+    feature_maps(val_in, model)
+    cam_vis (val_loader, model)
     guidedBackProp (val_loader, model)
 
 
