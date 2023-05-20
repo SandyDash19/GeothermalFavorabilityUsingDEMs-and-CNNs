@@ -83,6 +83,7 @@ def init_weights(module):
 
 def train_loop(dataloader, model, loss_fn, optimizer):
     size = len(dataloader.dataset)
+    train_loss = 0.0 
     for batch, (X, y) in enumerate(dataloader):
         #print (X.shape, y.shape)
         X = X.to(device)
@@ -97,20 +98,21 @@ def train_loop(dataloader, model, loss_fn, optimizer):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+
+        train_loss += loss.item()
         
-        if batch % 10 == 0:
+        if batch % 20 == 0:
             loss, current = loss.item(), (batch + 1) * len(X)
             #print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
-    return(loss_fn(pred, y).item())
+    train_loss /= len(dataloader)
+    return(loss_fn(pred, y).item()), train_loss
     
 
 def test_loop(dataloader, model, loss_fn):
     size = len(dataloader.dataset)
     num_batches = len(dataloader)
     #print (f'length of val loader {num_batches}')
-    test_loss, correct = 0, 0
-    prediction = []
-    target = []
+    test_loss, correct = 0, 0   
     
     with torch.no_grad():
         for X, y in dataloader:
@@ -119,13 +121,11 @@ def test_loop(dataloader, model, loss_fn):
             pred = model(X)            
             test_loss += loss_fn(pred, y).item()
             #print (f'test_loss {test_loss}, pred {pred}, label {y}')            
-            prediction.append(pred.item())
-            target.append(y.item())
-
-    test_loss /= num_batches
+    
+        test_loss /= num_batches
 
 #     print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
-    return test_loss, prediction, target
+    return test_loss, pred, y
 
 """This function gets the input of predicted outputs from validation set,
 and actual labels for val set. These inputs are already quantile transformed.
@@ -189,7 +189,7 @@ def analyzeImages (epochs, batch_size_train, batch_size_val, lr) :
     # resize binned_y to make it a 2D matrix
     y_train = y_train.reshape(-1,1)
 
-    print (y_train , y_train.shape)
+    #print (y_train , y_train.shape)
     
 
     #-------------------------------------------------------------
@@ -259,21 +259,26 @@ def analyzeImages (epochs, batch_size_train, batch_size_val, lr) :
     plt.figure(figsize=(8,6))
     train_losses = []
     test_losses = []
+    my_train_losses = []
     test_accs = []
-    
-    # the following lists will be overwritten for each epoch but i only care about the last one
-    pred = []
-    labels = []
+      
+   
     for t in range(epochs):
-        train_loss = train_loop(train_loader, model, loss_fn, optimizer)
+
+        pred = []
+        labels = []
+
+        train_loss, my_train_loss = train_loop(train_loader, model, loss_fn, optimizer)
         val_loss, pred, labels = test_loop(val_loader, model, loss_fn)
 
         # plot
+        my_train_losses.append(my_train_loss)
         train_losses.append(train_loss)
         test_losses.append(val_loss)
        
         plt.clf()
-        plt.plot(np.arange(1, t+2), train_losses, '-', label='train loss')
+        plt.plot(np.arange(1, t+2), my_train_losses, '-', label='my_train loss')
+        #plt.plot(np.arange(1, t+2), train_losses, '-', label='train loss')
         plt.plot(np.arange(1, t+2), test_losses, '--', label='test loss')
         
         plt.legend()    
@@ -289,8 +294,8 @@ def analyzeImages (epochs, batch_size_train, batch_size_val, lr) :
         binned_labels = rankbin (labels_cpu)
 
     df = pd.DataFrame({
-            'pred': pred_cpu, 
-            'labels': labels_cpu
+            'pred': binned_pred, 
+            'labels': binned_labels
         })
     # Save the DataFrame as a CSV file
     df.to_csv('../results/predictions_labels_regression.csv', index=False)
@@ -299,8 +304,13 @@ def analyzeImages (epochs, batch_size_train, batch_size_val, lr) :
     L1_loss = np.mean(np.abs (binned_labels - binned_pred))
     mean_L1_loss = np.round(L1_loss,2)
 
+    correct = 0.0
     for i in range (binned_pred.shape[0]):
-            corret += (binned_pred[i] == binned_labels[i])
+            correct += (binned_pred[i] == binned_labels[i])
+
+    val_acc = correct / binned_labels.shape[0]
+    
+    val_acc *= 100
 
     print(f"Final Accuracy: {(val_acc):>0.1f}% , Mean Ordinal Loss {mean_L1_loss}")
     plt.show()
@@ -309,9 +319,9 @@ def analyzeImages (epochs, batch_size_train, batch_size_val, lr) :
 
 
 def objective(trial):
-    lr = trial.suggest_loguniform('lr', 1e-3, 1e-1)
+    lr = trial.suggest_float('lr', 1e-3, 1e-1)
     batch_size_train = trial.suggest_categorical('batch_size_train', [8,16,24,32,40,48,56,64,72,80])
-    batch_size_val = trial.suggest_categorical('batch_size_val', [1,3,9,12,15,18,21,24,27,30])
+    batch_size_val = 44
     epochs = trial.suggest_int('epochs', 10, 100)
 
     val_acc, mean_l1_loss = analyzeImages(epochs, batch_size_train, batch_size_val, lr)
@@ -319,7 +329,7 @@ def objective(trial):
 
 def main ():
 
-    optuna_enabled = 0 
+    optuna_enabled = 0
     
     if optuna_enabled:
 
@@ -334,13 +344,13 @@ def main ():
             print(f'    {key}: {value}')
     
     else :
-        Iter = 10
+        Iter = 1
         acc = []
         l1_loss = []
 
-        epoch = 20
+        epoch = 66
         batch_size_train = 20
-        batch_size_val = 8
+        batch_size_val = 44
         lr = 0.1
 
         for i in range (Iter):
