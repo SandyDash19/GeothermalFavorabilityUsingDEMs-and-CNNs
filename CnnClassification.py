@@ -52,8 +52,7 @@ def relu_hook_function(module, grad_in, grad_out):
     # Zero out gradients where input and output is less than 0
     corresponding_input[corresponding_output < 0] = 0
     return (corresponding_input,)
-
-
+    
 def getData ():
     
     # Open training data
@@ -345,75 +344,78 @@ def guidedBackProp (val_loader, model):
     for param in test_model.parameters():
         param.requires_grad = True
 
+    for i, module in enumerate(test_model.modules()):
+        if isinstance(module, torch.nn.ReLU):
+            #print(test_model.named_modules())
+            module.register_full_backward_hook(relu_hook_function)
+
+
     # Extract a batch of images and labels from the test_dataloader
     images, labels = next(iter(val_loader))
 
-    fig, axs = plt.subplots(3, 6, figsize=(18, 9))  # Adjusted size
+    # Select the first image from the batch
+    input_image = images[0]
 
-    for i in range(3):
-        for j in range(3):
+    #print (input_image.shape)
 
-            input_image = images[i*3 + j]
-            true_label = labels[i*3 + j]
-            true_class = heatResid_ordinal_classes[true_label]
+    if len(input_image.shape) == 3:
+        # Add a dummy batch dimension
+        input_tensor = torch.unsqueeze(input_image, 0)
+    else:
+        input_tensor = input_image
 
-            if len(input_image.shape) == 3:
-                # Add a dummy batch dimension
-                input_tensor = torch.unsqueeze(input_image, 0)
-            else:
-                input_tensor = input_image
+    #print (input_tensor.shape)
 
-            input_tensor = input_tensor.clone().detach().to(device)
-            input_tensor.requires_grad_(True)
+    # Make input_tensor a leaf tensor and move it to the device
+    input_tensor = input_tensor.clone().detach().to(device)
+    input_tensor.requires_grad_(True)
 
-            # forward/inference
-            test_model.zero_grad()
-            output = test_model(input_tensor)
+    #print(f"Is input_tensor a leaf tensor? {input_tensor.is_leaf}") 
 
-            # Backward pass
-            output.backward(torch.ones(output.shape).to(device))
+    # forward/inference
+    test_model.zero_grad()
+    output = test_model(input_tensor)
 
-            # get the absolute value of the gradients and take the maximum along the color channels
-            gb = input_tensor.grad.abs().max(dim=1)[0].cpu().numpy()
+    # Backward pass
+    output.backward(torch.ones(output.shape).to(device))
 
-            gb = gb - gb.min()
-            gb = gb / gb.max()  # normalize to 0-1
+    #print(input_tensor.grad)  # Should not be None
 
-            predicted_label = output.argmax().item()
-            predicted_class = heatResid_ordinal_classes[predicted_label]
+    # get the absolute value of the gradients and take the maximum along the color channels
+    gb = input_tensor.grad.abs().max(dim=1)[0].cpu().numpy()
 
-            # remove color channel if it's 1
-            input_image = np.squeeze(input_image)  
-            gb = np.squeeze(gb)
+    gb = gb - gb.min()
+    gb = gb / gb.max()  # normalize to 0-1
 
-            # Create two subplots for original image and guided backpropagation
-            ax1 = axs[i, j * 2]
-            ax2 = axs[i, j * 2 + 1]
+    plt.figure(figsize=(6, 6))
 
-            ax1.imshow(input_image, cmap='gray')
-            ax1.set_title(f'Orig Label: {true_class}', y=-0.15)  # Adjusted position
-            ax1.axis('off')
+    # plot original image
+    plt.subplot(1, 2, 1)
 
-            ax2.imshow(gb, cmap ='hot')
-            ax2.set_title(f'GBP Pred Label: {predicted_class}', y=-0.15)  # Adjusted position
-            ax2.axis('off')
+    # remove color channel if it's 1
+    input_image = np.squeeze(input_image)  
 
-            # Setting the border color based on prediction correctness
-            if predicted_label == true_label:
-                for ax in [ax1, ax2]:
-                    for spine in ax.spines.values():
-                        spine.set_edgecolor('green')
-                        spine.set_linewidth(2)
-            else:
-                for ax in [ax1, ax2]:
-                    for spine in ax.spines.values():
-                        spine.set_edgecolor('red')
-                        spine.set_linewidth(2)
-            
-    plt.tight_layout()
-    plt.subplots_adjust(wspace=0.4, hspace=0.4)  # Adjusted spacing
-    plt.show() 
+    # Get the image label
+    image_label = labels[0].item()
+    image_class = heatResid_ordinal_classes[image_label]
 
+    # Get the predicted label
+    predicted_label = output.argmax().item()
+    predicted_class = heatResid_ordinal_classes[predicted_label]
+
+    plt.imshow(input_image)
+    plt.title(f'Orig Label: {image_class}')
+    plt.axis('off')
+
+    # plot guided backpropagation
+    plt.subplot(1, 2, 2)  
+    # remove the unnecessary channel dimension 
+    gb = np.squeeze(gb) 
+    plt.imshow(gb, cmap ='hot')
+    plt.title(f'GBP Pred Label: {predicted_class}')
+    plt.axis('off')
+
+    plt.show()  
 
 
 def analyzeImages (train_in, val_in, train_y, val_y, epochs, batch_size_train, batch_size_val, lr) :
@@ -533,7 +535,7 @@ def main ():
     Iter = 1
     acc = []
     l1_loss = []
-    epoch = 1
+    epoch = 10
     batch_size_train = 20
     batch_size_val = 44
     lr = 0.1
