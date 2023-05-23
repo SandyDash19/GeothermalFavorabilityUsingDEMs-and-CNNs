@@ -3,6 +3,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
+"""
+This file gets the dataset and plots it to get a feel for the dataset
+The code to open the images and convert them to numpy is used in the CnnClassfication
+and CnnRegression files.
+"""
 # Open training data
 file = h5py.File("../mp02files/DEM_train.h5", "r+")
 X_train = np.array(file["/images"])

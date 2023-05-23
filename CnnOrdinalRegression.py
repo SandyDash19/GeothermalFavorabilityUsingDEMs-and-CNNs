@@ -37,7 +37,10 @@ Loss = Smooth L1 Loss
 
 Bin the targets and bin the predictions
 Calculate mean L1 loss
-Binary classification error 
+
+The code in this file is mostly same as CnnClassification.py and I could
+create a flag in CnnClassfication.py to use it for regression but having a separate
+file is cleaner.
 
 """
 startTime = timeit.default_timer()

@@ -23,12 +23,22 @@ import pandas as pd
 import optuna 
 import timeit
 
+"""
+This file considers the problem statement defined in the technical report as a 
+classification problem. I use an AlexNet because the image dataset is small and 
+deeper network would not make the prediction any better.  
+"""
+
 startTime = timeit.default_timer()
 
 # Device will determine whether to run the training on GPU or CPU.
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print (device)
 
+"""
+Defined custom cam function to reduce the intensity of the colors
+and make the image more visible.
+"""
 def show_cam_on_image(img, mask):
     heatmap = cv2.applyColorMap(np.uint8(255*mask), cv2.COLORMAP_JET)
     heatmap = np.float32(heatmap) / 255
@@ -38,6 +48,10 @@ def show_cam_on_image(img, mask):
     img_alpha = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
     img_alpha[:, :, 3] = 180  # This is the alpha value (0-255). Higher value means more transparency.
     return img_alpha
+
+"""
+This function is used for guided back propagation.
+"""
 
 def relu_hook_function(module, grad_in, grad_out):
  
@@ -53,7 +67,11 @@ def relu_hook_function(module, grad_in, grad_out):
     corresponding_input[corresponding_output < 0] = 0
     return (corresponding_input,)
 
-
+"""
+This function reads the data, bins the labels into ordinal ranks
+and prepares training and validation inputs and corrosponding labels
+train_in, val_in, train_y and val_y
+"""
 def getData ():
     
     # Open training data
@@ -86,6 +104,9 @@ def getData ():
 
     return train_in, val_in, train_y, val_y    
 
+"""
+Custom class to add Gussian Noise data augmentation.
+"""
 class AddGaussianNoise(object):
     def __init__(self, mean=0., std=1.):
         self.std = std
@@ -95,6 +116,11 @@ class AddGaussianNoise(object):
         noise = torch.randn_like(tensor) * self.std + self.mean
         return tensor + noise
 
+"""
+Custom class to apply data transformation to the training data.
+Data transformation is applied to training data only because validation
+data must match closely with the test data. 
+"""
 # Apply Transform to dataset in this class.
 class MyDataset(Dataset):
     def __init__(self, data, targets, transform=None):
@@ -116,6 +142,9 @@ class MyDataset(Dataset):
     def __len__(self):
         return len(self.data)    
 
+"""
+Initialize weights by using Xavier initialization.
+"""
 def init_weights(module):
     """Initialize weights for CNNs."""
     if type(module) == nn.Linear or type(module) == nn.Conv2d:
@@ -200,7 +229,10 @@ def rankbin (Y):
     
     return np.asarray(ranked)
 
-
+"""
+This function plots feature maps for all 45 images in validation set. If you want to 
+reduce the number of images then reduce the range for the for loop
+"""
 def feature_maps (val_in, model):
 
     model.eval()
@@ -258,7 +290,10 @@ def feature_maps (val_in, model):
         plt.suptitle('Learned Filters for Conv2, index4')
         plt.show()      
 
-
+"""
+This function prints all the cam visualization in green and red boxes based on the prediction. 
+Function prints first 9 validation images in a 3x3 grid. 
+"""
 def cam_vis (val_loader, model):
   
     heatResid_ordinal_classes = [
@@ -332,6 +367,10 @@ def cam_vis (val_loader, model):
     plt.tight_layout()
     plt.show()
 
+"""
+This function prints guided back propagation images for first 9 validation set in a 3x6 grid with the original and predicted images.
+Guided backpropagation did not work with batch normalization layer therefore it needs to be commented out for this function to work.
+"""
 
 def guidedBackProp(val_loader, model):
     # Guided Back Propagation
@@ -406,13 +445,22 @@ def guidedBackProp(val_loader, model):
 
     plt.show()  
   
-
+"""
+This function 
+1. gets training, validation and test inputs, 
+2. applies data augmentation to the training set,
+3. runs training, validation and test loops
+4. and calls CNN visualization functions if the flag is set.
+"""
 
 def analyzeImages (train_in, val_in, train_y, val_y, epochs, batch_size_train, batch_size_val, lr) :
     
 
-    #----------Define Image augmentation to increase number of images----------------
-    # Define data transformations
+    cnn_visualization = False
+    guidedBP = False
+
+    # Define Image augmentation to increase number of images
+    
     transform_train = transforms.Compose([
     #transforms.RandomCrop(30, padding = None),
     transforms.RandomHorizontalFlip(p=0.5),
@@ -430,7 +478,7 @@ def analyzeImages (train_in, val_in, train_y, val_y, epochs, batch_size_train, b
         transforms.Normalize(mean=[0.5], std=[0.5])
     ])
 
-    #-----------Preprocess the data-----------------------------------------------
+    # Preprocess the data
 
     # Create instances for training and validation datasets
     train_dataset = MyDataset(train_in, train_y, transform=transform_train)
@@ -451,7 +499,8 @@ def analyzeImages (train_in, val_in, train_y, val_y, epochs, batch_size_train, b
 
     #for data, targets in val_loader:
         #print(f'data_loader targets {targets}')
-    #------------- Setup the Model------------------------------------------------
+
+    # Setup the Model
     
     # Number of outputs are 4 here becasuse there are 4 ordinal labels
     num_outputs = 4
@@ -510,14 +559,20 @@ def analyzeImages (train_in, val_in, train_y, val_y, epochs, batch_size_train, b
     print(f"Final Accuracy: {(val_acc):>0.1f}% , Mean Ordinal Loss {mean_L1_loss}")
     #plt.show()
 
-    feature_maps(val_in, model)
-    cam_vis (val_loader, model)
-    guidedBackProp (val_loader, model)
+    if cnn_visualization == True:
+        feature_maps(val_in, model)
+        cam_vis (val_loader, model)
+        
+    if guidedBP == True :
+        guidedBackProp (val_loader, model)
 
 
     return val_acc, mean_L1_loss
 
-
+"""
+This function performs Monte Carlo Cross Validation on analyzeImages function
+and reports average ordinal accuracy and average Mean Absolute Error across iterations.
+"""
 def main ():
 
     train_in, val_in, train_y, val_y = getData()    
@@ -527,7 +582,10 @@ def main ():
     l1_loss = []
     epoch = 10
     batch_size_train = 20
-    batch_size_val = 44
+
+    # 1 batch for validation because model is not learning during validation
+    batch_size_val = 45
+
     lr = 0.1
     for i in range (Iter):
         val_acc = 0.0
