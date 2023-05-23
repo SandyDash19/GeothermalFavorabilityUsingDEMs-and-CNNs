@@ -25,8 +25,13 @@ Your task is to train an accurate CNN-based predictor of the heatflow residual g
 patch.
 
 File dictionary
+
 AlexNetBN.py            - AlexNet model
+
 CnnClassification.py    - Classification approach for the above problem.
+
 CnnOrdinalRegression.py - Regression approach for the above problem.
+
 ReadImages.py           - Open the dataset and plot the traning and test images. 
+
 Technical_Report.pdf    - Technical Report for this project. 
