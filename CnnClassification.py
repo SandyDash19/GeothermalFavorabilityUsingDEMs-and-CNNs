@@ -102,7 +102,7 @@ def getData ():
 
     print (f' train {train_in.shape}, train_label {train_y.shape}, val {val_in.shape}, val label {val_y.shape}')
 
-    return train_in, val_in, train_y, val_y    
+    return train_in, val_in, train_y, val_y, X_test
 
 """
 Custom class to add Gussian Noise data augmentation.
@@ -141,6 +141,31 @@ class MyDataset(Dataset):
 
     def __len__(self):
         return len(self.data)    
+    
+
+"""
+Custom class to apply data transformation to the test data.
+Data transformation is applied to training data only because validation 
+and test data must match closely with the test data. 
+"""
+# Apply Transform to dataset in this class.
+class MyTest(Dataset):
+    def __init__(self, data, transform=None):
+        self.data = data       
+        self.transform = transform
+
+    def __getitem__(self, index):
+        x = self.data[index]              
+        
+        if self.transform:
+            x = Image.fromarray(x)  # Convert numpy array to PIL.Image
+            x = self.transform(x)
+
+        return x
+
+    def __len__(self):
+        return len(self.data)    
+
 
 """
 Initialize weights by using Xavier initialization.
@@ -149,6 +174,10 @@ def init_weights(module):
     """Initialize weights for CNNs."""
     if type(module) == nn.Linear or type(module) == nn.Conv2d:
         nn.init.xavier_uniform_(module.weight)
+
+"""
+Function for training
+"""
 
 def train_loop(dataloader, model, loss_fn, optimizer):
     size = len(dataloader.dataset)
@@ -172,15 +201,18 @@ def train_loop(dataloader, model, loss_fn, optimizer):
             #print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
     return(loss_fn(pred, y).item())
     
+"""
+Function for Test 
+"""
 
-def test_loop(dataloader, model, loss_fn):
+def val_loop(dataloader, model, loss_fn):
     size = len(dataloader.dataset)
     num_batches = len(dataloader)
     #print (f'length of val loader {num_batches}')
     test_loss, correct = 0, 0
     prediction = []
-    target = []
-    
+    target = []    
+
     with torch.no_grad():
         for X, y in dataloader:
             X = X.to(device)
@@ -196,6 +228,22 @@ def test_loop(dataloader, model, loss_fn):
     correct /= size
 #     print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
     return test_loss, 100*correct, prediction, target
+
+"""
+Function for validation
+"""
+
+def test_loop(dataloader, model):    
+    
+    prediction = []    
+
+    with torch.no_grad():
+        for X in dataloader:
+            X = X.to(device)                       
+            pred = model(X)            
+            prediction.append(pred.argmax(1))           
+    
+    return prediction
 
 """This function gets the input of predicted outputs from validation set,
 and actual labels for val set. These inputs are already quantile transformed.
@@ -453,7 +501,7 @@ This function
 4. and calls CNN visualization functions if the flag is set.
 """
 
-def analyzeImages (train_in, val_in, train_y, val_y, epochs, batch_size_train, batch_size_val, lr) :
+def analyzeImages (train_in, val_in, train_y, val_y, x_test, epochs, batch_size_train, batch_size_val, batch_size_test, lr) :
     
 
     cnn_visualization = False
@@ -467,22 +515,30 @@ def analyzeImages (train_in, val_in, train_y, val_y, epochs, batch_size_train, b
     transforms.RandomVerticalFlip(p=0.5),
     transforms.RandomRotation((0, 359)),       
     #transforms.RandomPerspective(distortion_scale=0.5, p=0.5),    
-    #transforms.GaussianBlur(3, sigma=(0.1, 2.0)),    
+    transforms.GaussianBlur(3, sigma=(0.1, 2.0)),    
     transforms.ToTensor(),
     #AddGaussianNoise(0.0, 0.1),
-    transforms.Normalize(mean=[0.5], std=[0.5])
+    transforms.Normalize(mean=[0.4914], std=[0.2023])
+    ])
+
+    transform_val = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.4914], std=[0.2023])
     ])
 
     transform_test = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5], std=[0.5])
+        transforms.Normalize(mean=[0.4914], std=[0.2023])
     ])
 
     # Preprocess the data
 
     # Create instances for training and validation datasets
     train_dataset = MyDataset(train_in, train_y, transform=transform_train)
-    val_dataset = MyDataset(val_in, val_y, transform=transform_test)
+    val_dataset = MyDataset(val_in, val_y, transform=transform_val)
+
+    # I dont have the targets for test. I can add it once I get it.     
+    test_dataset = MyTest(x_test, transform=transform_test)
 
     #print (f' val_dataset {val_dataset.targets}')
     #print (train_dataset.data.shape)
@@ -491,9 +547,11 @@ def analyzeImages (train_in, val_in, train_y, val_y, epochs, batch_size_train, b
                                                batch_size = batch_size_train,
                                                shuffle = True)
 
-    val_loader = torch.utils.data.DataLoader (dataset = val_dataset, batch_size=batch_size_val, shuffle=True)
+    val_loader = torch.utils.data.DataLoader (dataset = val_dataset, batch_size=batch_size_val, shuffle=False)
 
-    print (train_dataset.data.shape, val_dataset.data.shape)
+    test_loader = torch.utils.data.DataLoader (dataset = test_dataset, batch_size=batch_size_test, shuffle=False)
+
+    print (train_dataset.data.shape, val_dataset.data.shape, test_dataset.data.shape)
    
     # debug prints
 
@@ -526,7 +584,7 @@ def analyzeImages (train_in, val_in, train_y, val_y, epochs, batch_size_train, b
         labels = []
 
         train_loss = train_loop(train_loader, model, loss_fn, optimizer)
-        val_loss, val_acc, pred, labels = test_loop(val_loader, model, loss_fn)
+        val_loss, val_acc, pred, labels = val_loop(val_loader, model, loss_fn)
 
         # plot
         train_losses.append(train_loss)
@@ -557,12 +615,17 @@ def analyzeImages (train_in, val_in, train_y, val_y, epochs, batch_size_train, b
     mean_L1_loss = np.round(L1_loss,2)
 
     print(f"Final Accuracy: {(val_acc):>0.1f}% , Mean Ordinal Loss {mean_L1_loss}")
-    #plt.show()
+    plt.show()
+
+    test_pred = test_loop (test_loader, model)
+    test_pred_cpu = np.concatenate([p.cpu().numpy().flatten() for p in test_pred]) + 1
+    df = pd.DataFrame(test_pred_cpu)
+    df.to_csv('../results/test_pred.csv', index=False)
 
     if cnn_visualization == True:
         feature_maps(val_in, model)
         cam_vis (val_loader, model)
-        
+
     if guidedBP == True :
         guidedBackProp (val_loader, model)
 
@@ -575,22 +638,25 @@ and reports average ordinal accuracy and average Mean Absolute Error across iter
 """
 def main ():
 
-    train_in, val_in, train_y, val_y = getData()    
+    train_in, val_in, train_y, val_y, x_test = getData()    
    
     Iter = 1
     acc = []
     l1_loss = []
-    epoch = 10
+    epoch = 12
+    
     batch_size_train = 20
 
     # 1 batch for validation because model is not learning during validation
-    batch_size_val = 45
+    batch_size_val = val_y.shape[0]
+
+    batch_size_test = x_test.shape[0]
 
     lr = 0.1
     for i in range (Iter):
         val_acc = 0.0
         mean_l1_loss = 0.0
-        val_acc, mean_l1_loss = analyzeImages(train_in, val_in, train_y, val_y, epoch, batch_size_train, batch_size_val, lr)
+        val_acc, mean_l1_loss = analyzeImages(train_in, val_in, train_y, val_y, x_test, epoch, batch_size_train, batch_size_val, batch_size_test, lr)
         acc.append (val_acc)
         l1_loss.append (mean_l1_loss)
     acc_np = np.asarray (acc)
@@ -598,7 +664,7 @@ def main ():
     avg_acc = np.mean (acc_np)
     avg_loss = np.mean (l1_loss_np)
     print (f'Average Ordinal accuracy {np.round(avg_acc,2)} , average L1_loss {np.round(avg_loss,2)}')
-
+    
 
 
 if __name__ == '__main__':
