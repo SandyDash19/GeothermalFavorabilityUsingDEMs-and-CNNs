@@ -35,3 +35,7 @@ CnnOrdinalRegression.py - Regression approach for the above problem.
 ReadImages.py           - Open the dataset and plot the traning and test images. 
 
 Technical_Report.pdf    - Technical Report for this project. 
+
+Question I want to explore in future:
+1) The model favored ordinal ranks 1,3,4 and never predicted 2. Determine how many input images were ranked as 2?
+ 
